@@ -1,0 +1,49 @@
+DECLARE @TableName sysname
+DECLARE @ColumnCount INT
+DECLARE @ColumnID INT
+DECLARE @SelectColumn NVARCHAR(500)
+DECLARE @sql NVARCHAR(max) = ''
+
+DECLARE QUERYINFO CURSOR FOR
+    SELECT
+        t.name AS TableName,
+        ccount.ColumnCount,
+        c.column_id AS ColumnID,
+        CASE WHEN c.column_id <> ccount.ColumnCount
+                THEN c.name + ', '
+             ELSE c.name
+             END AS SelectColumn
+    FROM sys.tables t
+    INNER JOIN sys.columns c ON t.object_id=c.object_id
+    INNER JOIN (
+        SELECT object_id,COUNT(*) AS ColumnCount
+        FROM sys.columns
+        GROUP BY object_id
+    ) ccount ON t.object_id = ccount.object_id
+    ORDER BY t.Name,c.column_id
+
+OPEN QUERYINFO
+FETCH NEXT FROM QUERYINFO INTO @TableName,@ColumnCount,@ColumnID,@SelectColumn
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    IF @ColumnID = 1
+    BEGIN
+        SET @sql = 'CREATE VIEW v_' + @TableName + ' AS SELECT ' + @SelectColumn
+    END
+    ELSE
+    BEGIN
+        SET @sql = @sql + @SelectColumn
+    END  
+
+    IF @ColumnID = @ColumnCount
+    BEGIN
+        SET @sql = @sql + ' FROM ' + @TableName
+        EXEC sys.sp_executesql @sql
+        SET @sql = ''
+    END 
+
+    FETCH NEXT FROM QUERYINFO INTO @TableName,@ColumnCount,@ColumnID,@SelectColumn
+END
+
+CLOSE QUERYINFO
+DEALLOCATE QUERYINFO
